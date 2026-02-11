@@ -5,6 +5,7 @@ import { GitHubService } from '@/lib/github'
 import { calculateVerdict, calculateTrend, getVerdictHelperText } from '@/lib/verdictEngine'
 import { evaluateTargets } from '@/lib/targetEngine'
 import { calculateStreak } from '@/lib/streakEngine'
+import { getSnapshot, createSnapshot, isCurrentWeek } from '@/lib/snapshotEngine'
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     const githubService = new GitHubService(session.accessToken)
     const currentWeekRange = githubService.getWeekRange()
-    const previousWeekRange = githubService.getWeekRange(new Date(), 1)
+    const weekStartDate = currentWeekRange.startDate.toISOString().split('T')[0] // YYYY-MM-DD format
 
     // Get user info
     const userResponse = await fetch('https://api.github.com/user', {
@@ -34,6 +35,42 @@ export async function GET(request: NextRequest) {
     
     const user = await userResponse.json()
     const username = user.login
+    const githubUserId = user.id.toString()
+
+    // Check if this is current week or past week
+    const currentWeekCheck = await isCurrentWeek(weekStartDate)
+    
+    // For past weeks, check if snapshot exists
+    if (!currentWeekCheck) {
+      const existingSnapshot = await getSnapshot(githubUserId, weekStartDate, repoParam)
+      
+      if (existingSnapshot) {
+        // Return existing snapshot
+        return NextResponse.json({
+          weekRange: {
+            start: currentWeekRange.start,
+            end: currentWeekRange.end,
+            startDate: currentWeekRange.startDate.toISOString(),
+            endDate: currentWeekRange.endDate.toISOString()
+          },
+          repositories: repoParam === 'all' ? [] : [repoParam],
+          metrics: existingSnapshot.metrics,
+          verdict: existingSnapshot.verdict,
+          targets: existingSnapshot.targets,
+          streak: {
+            currentStreak: 0, // Will be calculated separately for past weeks
+            lastQualifiedWeek: '',
+            status: 'BROKEN',
+            previousStreak: 0
+          },
+          user: {
+            username,
+            name: user.name,
+            avatar: user.avatar_url
+          }
+        })
+      }
+    }
 
     // Get repositories
     const allRepos = await githubService.getUserRepos()
@@ -50,7 +87,8 @@ export async function GET(request: NextRequest) {
       }, { status: 404 })
     }
 
-    // Calculate current week metrics
+    // Compute live data for current week or missing past week
+    const previousWeekRange = githubService.getWeekRange(new Date(), 1)
     const currentMetrics = await githubService.calculateWeeklyMetrics(repos, username, currentWeekRange)
     
     // Calculate previous week metrics for comparison
@@ -70,6 +108,24 @@ export async function GET(request: NextRequest) {
     
     // Calculate streak
     const streak = await calculateStreak(username, repos, githubService)
+
+    // Store snapshot for past weeks (not current week)
+    if (!currentWeekCheck) {
+      try {
+        await createSnapshot(
+          githubUserId,
+          weekStartDate,
+          repoParam,
+          currentMetrics,
+          verdict,
+          targets,
+          verdict.label !== 'CHAOTIC' && targets.overallStatus === 'ON_TRACK'
+        )
+      } catch (error) {
+        console.warn('Could not create snapshot:', error)
+        // Continue even if snapshot creation fails
+      }
+    }
 
     return NextResponse.json({
       weekRange: {

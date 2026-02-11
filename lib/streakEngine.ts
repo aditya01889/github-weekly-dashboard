@@ -1,6 +1,7 @@
 import { WeeklyMetrics } from './github'
 import { calculateVerdict } from './verdictEngine'
 import { evaluateTargets } from './targetEngine'
+import { getSnapshotsForStreak } from './snapshotEngine'
 
 export interface StreakResult {
   currentStreak: number
@@ -20,78 +21,42 @@ export async function calculateStreak(
   githubService: any,
   maxWeeks: number = 12
 ): Promise<StreakResult> {
-  const weeksData: WeekData[] = []
   let currentStreak = 0
   let lastQualifiedWeek = ''
 
-  // For efficiency, only check last 4 weeks for streak calculation
-  // This reduces API calls from 12 weeks to 4 weeks
-  const streakCheckWeeks = Math.min(maxWeeks, 4)
-
-  // Compute data for current week and previous weeks
-  for (let weeksAgo = 0; weeksAgo < streakCheckWeeks; weeksAgo++) {
-    try {
-      const weekRange = githubService.getWeekRange(new Date(), weeksAgo)
-      const metrics = await githubService.calculateWeeklyMetrics(repos, username, weekRange)
-      const verdict = calculateVerdict(metrics)
-      const targets = evaluateTargets(metrics)
-      
-      const qualifies = verdict.label !== 'CHAOTIC' && targets.overallStatus === 'ON_TRACK'
-      
-      const weekDate = weekRange.startDate.toISOString().split('T')[0] // YYYY-MM-DD format
-      
-      weeksData.push({
-        weekDate,
-        qualifies
-      })
-
-      // Calculate streak
-      if (qualifies) {
-        if (weeksAgo === 0) {
-          // Current week qualifies
-          currentStreak++
-        } else if (currentStreak > 0) {
-          // Continue streak
-          currentStreak++
-        }
-        lastQualifiedWeek = weekDate
+  // For efficiency, use snapshots instead of GitHub API calls
+  try {
+    const snapshots = await getSnapshotsForStreak(username.toString(), 'all', maxWeeks)
+    
+    // Calculate streak from snapshots
+    for (const snapshot of snapshots) {
+      if (snapshot.qualified) {
+        currentStreak++
+        lastQualifiedWeek = snapshot.week_start
       } else {
-        // Break streak
-        if (currentStreak > 0) {
-          // Streak broken, but we keep the previous length
-          // currentStreak will be reset to 0 below
-        }
-      }
-    } catch (error) {
-      console.warn(`Could not fetch data for week ${weeksAgo} ago:`, error)
-      // Add non-qualifying week to maintain timeline
-      const weekRange = githubService.getWeekRange(new Date(), weeksAgo)
-      weeksData.push({
-        weekDate: weekRange.startDate.toISOString().split('T')[0],
-        qualifies: false
-      })
-      
-      // If we hit rate limit or timeout, break early to avoid cascading failures
-      if (error instanceof Error && 
-          (error.message.includes('rate limit') || 
-           error.message.includes('timeout') || 
-           error.message.includes('ETIMEDOUT'))) {
+        // Break streak on first non-qualifying week
         break
       }
     }
-  }
 
-  // Reset current streak if current week doesn't qualify
-  const currentWeekQualifies = weeksData.find(w => w.weekDate === weeksData[0]?.weekDate)?.qualifies
-  if (!currentWeekQualifies) {
-    const previousStreakLength = currentStreak
-    currentStreak = 0
-  }
+    // Check if current week qualifies (first snapshot should be current week)
+    const currentWeekQualifies = snapshots.length > 0 && snapshots[0].qualified
 
-  return {
-    currentStreak,
-    lastQualifiedWeek: lastQualifiedWeek || weeksData[0]?.weekDate || '',
-    status: currentWeekQualifies ? 'ACTIVE' : 'BROKEN',
-    previousStreak: currentStreak > 0 ? currentStreak : 0
+    return {
+      currentStreak: currentWeekQualifies ? currentStreak : 0,
+      lastQualifiedWeek,
+      status: currentWeekQualifies ? 'ACTIVE' : 'BROKEN',
+      previousStreak: currentStreak > 0 ? currentStreak : 0
+    }
+  } catch (error) {
+    console.warn('Could not fetch snapshots for streak calculation:', error)
+    
+    // Fallback to minimal streak if snapshots unavailable
+    return {
+      currentStreak: 0,
+      lastQualifiedWeek: '',
+      status: 'BROKEN',
+      previousStreak: 0
+    }
   }
 }
