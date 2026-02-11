@@ -24,8 +24,12 @@ export async function calculateStreak(
   let currentStreak = 0
   let lastQualifiedWeek = ''
 
+  // For efficiency, only check last 4 weeks for streak calculation
+  // This reduces API calls from 12 weeks to 4 weeks
+  const streakCheckWeeks = Math.min(maxWeeks, 4)
+
   // Compute data for current week and previous weeks
-  for (let weeksAgo = 0; weeksAgo < maxWeeks; weeksAgo++) {
+  for (let weeksAgo = 0; weeksAgo < streakCheckWeeks; weeksAgo++) {
     try {
       const weekRange = githubService.getWeekRange(new Date(), weeksAgo)
       const metrics = await githubService.calculateWeeklyMetrics(repos, username, weekRange)
@@ -66,6 +70,14 @@ export async function calculateStreak(
         weekDate: weekRange.startDate.toISOString().split('T')[0],
         qualifies: false
       })
+      
+      // If we hit rate limit or timeout, break early to avoid cascading failures
+      if (error instanceof Error && 
+          (error.message.includes('rate limit') || 
+           error.message.includes('timeout') || 
+           error.message.includes('ETIMEDOUT'))) {
+        break
+      }
     }
   }
 
