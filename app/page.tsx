@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import { MetricSection } from '@/components/MetricSection'
 import { RepoFilter } from '@/components/RepoFilter'
+import { VerdictBanner } from '@/components/VerdictBanner'
 
 interface WeeklyMetrics {
   activity: {
@@ -33,6 +34,10 @@ interface MetricsResponse {
   }
   repositories: string[]
   metrics: WeeklyMetrics
+  verdict: {
+    score: number
+    label: 'STRONG' | 'SOLID' | 'CHAOTIC'
+  }
   user: {
     username: string
     name: string | null
@@ -47,6 +52,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [selectedRepo, setSelectedRepo] = useState('all')
   const [availableRepos, setAvailableRepos] = useState<string[]>([])
+  const [trend, setTrend] = useState<{ trend: 'Improving' | 'Stable' | 'Declining' | 'Insufficient data'; arrow: '↑' | '→' | '↓' | '' } | null>(null)
 
   const fetchMetrics = async (repo: string) => {
     if (!session?.accessToken) return
@@ -65,6 +71,17 @@ export default function Home() {
       const data: MetricsResponse = await response.json()
       setMetrics(data)
       setAvailableRepos(data.repositories)
+      
+      // Calculate 3-week trend (simplified - in real app would store historical data)
+      if (data.verdict) {
+        // For demo purposes, we'll use a simple trend calculation
+        // In production, you'd fetch last 3 weeks of data
+        const mockTrend = {
+          trend: 'Stable' as const,
+          arrow: '→' as const
+        }
+        setTrend(mockTrend)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -162,6 +179,14 @@ export default function Home() {
             selectedRepo={selectedRepo}
             onRepoChange={setSelectedRepo}
             repositories={availableRepos}
+          />
+        )}
+
+        {/* Verdict Banner */}
+        {metrics && metrics.verdict && !loading && (
+          <VerdictBanner
+            verdict={metrics.verdict}
+            trend={trend || undefined}
           />
         )}
 

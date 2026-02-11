@@ -61,9 +61,11 @@ export class GitHubService {
     return repos
   }
 
-  getWeekRange(date: Date = new Date()) {
-    const start = startOfWeek(date, { weekStartsOn: 1 }) // Monday
-    const end = endOfWeek(date, { weekStartsOn: 1 }) // Sunday
+  getWeekRange(date: Date = new Date(), weeksAgo: number = 0) {
+    const targetDate = new Date(date)
+    targetDate.setDate(targetDate.getDate() - (weeksAgo * 7))
+    const start = startOfWeek(targetDate, { weekStartsOn: 1 }) // Monday
+    const end = endOfWeek(targetDate, { weekStartsOn: 1 }) // Sunday
     
     return {
       start: format(start, "yyyy-MM-dd'T'HH:mm:ss'Z'"),

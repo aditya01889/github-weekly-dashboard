@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { GitHubService } from '@/lib/github'
+import { calculateVerdict, calculateTrend, getVerdictHelperText } from '@/lib/verdictEngine'
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +16,8 @@ export async function GET(request: NextRequest) {
     const repoParam = searchParams.get('repo') || 'all'
 
     const githubService = new GitHubService(session.accessToken)
-    const weekRange = githubService.getWeekRange()
+    const currentWeekRange = githubService.getWeekRange()
+    const previousWeekRange = githubService.getWeekRange(new Date(), 1)
 
     // Get user info
     const userResponse = await fetch('https://api.github.com/user', {
@@ -46,18 +48,34 @@ export async function GET(request: NextRequest) {
       }, { status: 404 })
     }
 
-    // Calculate metrics
-    const metrics = await githubService.calculateWeeklyMetrics(repos, username, weekRange)
+    // Calculate current week metrics
+    const currentMetrics = await githubService.calculateWeeklyMetrics(repos, username, currentWeekRange)
+    
+    // Calculate previous week metrics for comparison
+    let previousMetrics
+    try {
+      previousMetrics = await githubService.calculateWeeklyMetrics(repos, username, previousWeekRange)
+    } catch (error) {
+      console.warn('Could not fetch previous week metrics:', error)
+      previousMetrics = undefined
+    }
+
+    // Calculate verdict
+    const verdict = calculateVerdict(currentMetrics, previousMetrics)
 
     return NextResponse.json({
       weekRange: {
-        start: weekRange.start,
-        end: weekRange.end,
-        startDate: weekRange.startDate.toISOString(),
-        endDate: weekRange.endDate.toISOString()
+        start: currentWeekRange.start,
+        end: currentWeekRange.end,
+        startDate: currentWeekRange.startDate.toISOString(),
+        endDate: currentWeekRange.endDate.toISOString()
       },
       repositories: repoParam === 'all' ? repos.map(r => r.full_name) : [repoParam],
-      metrics,
+      metrics: currentMetrics,
+      verdict: {
+        score: verdict.score,
+        label: verdict.label
+      },
       user: {
         username,
         name: user.name,
