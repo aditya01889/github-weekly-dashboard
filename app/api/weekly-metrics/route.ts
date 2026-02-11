@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { GitHubService } from '@/lib/github'
 import { calculateVerdict, calculateTrend, getVerdictHelperText } from '@/lib/verdictEngine'
+import { evaluateTargets } from '@/lib/targetEngine'
 
 export async function GET(request: NextRequest) {
   try {
@@ -62,6 +63,9 @@ export async function GET(request: NextRequest) {
 
     // Calculate verdict
     const verdict = calculateVerdict(currentMetrics, previousMetrics)
+    
+    // Calculate targets
+    const targets = evaluateTargets(currentMetrics)
 
     return NextResponse.json({
       weekRange: {
@@ -75,6 +79,14 @@ export async function GET(request: NextRequest) {
       verdict: {
         score: verdict.score,
         label: verdict.label
+      },
+      targets: {
+        prMerged: targets.prMerged,
+        featuresCompleted: targets.featuresCompleted,
+        bugFixRatio: targets.bugFixRatio,
+        testsWritten: targets.testsWritten,
+        completionRate: targets.completionRate,
+        overallStatus: targets.overallStatus
       },
       user: {
         username,

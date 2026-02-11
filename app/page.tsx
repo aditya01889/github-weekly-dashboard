@@ -5,6 +5,7 @@ import { useSession, signIn, signOut } from 'next-auth/react'
 import { MetricSection } from '@/components/MetricSection'
 import { RepoFilter } from '@/components/RepoFilter'
 import { VerdictBanner } from '@/components/VerdictBanner'
+import { TargetProgress } from '@/components/TargetProgress'
 
 interface WeeklyMetrics {
   activity: {
@@ -37,6 +38,14 @@ interface MetricsResponse {
   verdict: {
     score: number
     label: 'STRONG' | 'SOLID' | 'CHAOTIC'
+  }
+  targets: {
+    prMerged: { current: number; target: number; met: boolean }
+    featuresCompleted: { current: number; target: number; met: boolean }
+    bugFixRatio: { current: number; target: number; met: boolean }
+    testsWritten: { current: number; target: number; met: boolean }
+    completionRate: number
+    overallStatus: 'ON_TRACK' | 'AT_RISK'
   }
   user: {
     username: string
@@ -187,6 +196,15 @@ export default function Home() {
           <VerdictBanner
             verdict={metrics.verdict}
             trend={trend || undefined}
+          />
+        )}
+
+        {/* Target Progress */}
+        {metrics && metrics.targets && !loading && (
+          <TargetProgress
+            targets={metrics.targets}
+            completionRate={metrics.targets.completionRate}
+            overallStatus={metrics.targets.overallStatus}
           />
         )}
 
