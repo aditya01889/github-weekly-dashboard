@@ -4,6 +4,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { GitHubService } from '@/lib/github'
 import { calculateVerdict, calculateTrend, getVerdictHelperText } from '@/lib/verdictEngine'
 import { evaluateTargets } from '@/lib/targetEngine'
+import { calculateStreak } from '@/lib/streakEngine'
 
 export async function GET(request: NextRequest) {
   try {
@@ -66,6 +67,9 @@ export async function GET(request: NextRequest) {
     
     // Calculate targets
     const targets = evaluateTargets(currentMetrics)
+    
+    // Calculate streak
+    const streak = await calculateStreak(username, repos, githubService)
 
     return NextResponse.json({
       weekRange: {
@@ -87,6 +91,12 @@ export async function GET(request: NextRequest) {
         testsWritten: targets.testsWritten,
         completionRate: targets.completionRate,
         overallStatus: targets.overallStatus
+      },
+      streak: {
+        currentStreak: streak.currentStreak,
+        lastQualifiedWeek: streak.lastQualifiedWeek,
+        status: streak.status,
+        previousStreak: streak.previousStreak
       },
       user: {
         username,

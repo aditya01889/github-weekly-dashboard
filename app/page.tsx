@@ -6,6 +6,7 @@ import { MetricSection } from '@/components/MetricSection'
 import { RepoFilter } from '@/components/RepoFilter'
 import { VerdictBanner } from '@/components/VerdictBanner'
 import { TargetProgress } from '@/components/TargetProgress'
+import { StreakDisplay } from '@/components/StreakDisplay'
 
 interface WeeklyMetrics {
   activity: {
@@ -46,6 +47,12 @@ interface MetricsResponse {
     testsWritten: { current: number; target: number; met: boolean }
     completionRate: number
     overallStatus: 'ON_TRACK' | 'AT_RISK'
+  }
+  streak: {
+    currentStreak: number
+    lastQualifiedWeek: string
+    status: 'ACTIVE' | 'BROKEN'
+    previousStreak: number
   }
   user: {
     username: string
@@ -206,6 +213,11 @@ export default function Home() {
             completionRate={metrics.targets.completionRate}
             overallStatus={metrics.targets.overallStatus}
           />
+        )}
+
+        {/* Streak Display */}
+        {metrics && metrics.streak && !loading && (
+          <StreakDisplay streak={metrics.streak} />
         )}
 
         {/* Loading State */}
