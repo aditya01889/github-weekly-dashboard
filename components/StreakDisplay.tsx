@@ -24,7 +24,7 @@ export function StreakDisplay({ streak }: StreakDisplayProps) {
       case 'ACTIVE':
         return `Performance Streak: ${currentStreak} Weeks`
       case 'BROKEN':
-        return `Streak Broken\nLast Streak: ${previousStreak} Weeks`
+        return `Streak Broken - Last Streak: ${previousStreak} Weeks`
       default:
         return 'Performance Streak: 0 Weeks'
     }
