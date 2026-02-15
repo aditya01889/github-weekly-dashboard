@@ -7,6 +7,8 @@ import { RepoFilter } from '@/components/RepoFilter'
 import { VerdictBanner } from '@/components/VerdictBanner'
 import { TargetProgress } from '@/components/TargetProgress'
 import { StreakDisplay } from '@/components/StreakDisplay'
+import { MonthlyView } from '@/components/MonthlyView'
+import { ViewToggle } from '@/components/ViewToggle'
 
 interface WeeklyMetrics {
   activity: {
@@ -61,14 +63,64 @@ interface MetricsResponse {
   }
 }
 
+interface MonthlyResponse {
+  metrics: {
+    activity: {
+      commits: number
+      prOpened: number
+      prMerged: number
+      featuresCompleted: number
+    }
+    combat: {
+      bugsFound: number
+      bugsFixed: number
+      openBugs: number
+      bugFixRatio: number
+    }
+    defense: {
+      testsWritten: number
+      ciRuns: number
+    }
+  }
+  qualifiedWeeks: number
+  totalWeeks: number
+  verdict: 'STRONG_MONTH' | 'SOLID_MONTH' | 'UNSTABLE_MONTH' | 'CHAOTIC_MONTH'
+}
+
 export default function Home() {
   const { data: session, status } = useSession()
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null)
+  const [monthlyData, setMonthlyData] = useState<MonthlyResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedRepo, setSelectedRepo] = useState('all')
   const [availableRepos, setAvailableRepos] = useState<string[]>([])
   const [trend, setTrend] = useState<{ trend: 'Improving' | 'Stable' | 'Declining' | 'Insufficient data'; arrow: '↑' | '→' | '↓' | '' } | null>(null)
+  const [currentView, setCurrentView] = useState<'weekly' | 'monthly'>('weekly')
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)) // YYYY-MM format
+
+  const fetchMonthlyMetrics = async (month: string) => {
+    if (!session?.accessToken) return
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch(`/api/monthly-metrics?month=${encodeURIComponent(month)}`)
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch monthly metrics')
+      }
+
+      const data: MonthlyResponse = await response.json()
+      setMonthlyData(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const fetchMetrics = async (repo: string) => {
     if (!session?.accessToken) return
@@ -107,9 +159,13 @@ export default function Home() {
 
   useEffect(() => {
     if (session?.accessToken) {
-      fetchMetrics(selectedRepo)
+      if (currentView === 'weekly') {
+        fetchMetrics(selectedRepo)
+      } else {
+        fetchMonthlyMetrics(selectedMonth)
+      }
     }
-  }, [session, selectedRepo])
+  }, [session, currentView, selectedRepo, selectedMonth])
 
   if (status === 'loading') {
     return (
@@ -160,37 +216,53 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              GitHub Weekly Performance Dashboard
-            </h1>
-            {metrics && (
-              <div className="text-sm text-gray-600 mt-1">
-                {new Date(metrics.weekRange.startDate).toLocaleDateString()} - {new Date(metrics.weekRange.endDate).toLocaleDateString()}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            GitHub Weekly Performance Dashboard
+          </h1>
+          <p className="text-gray-600">
+            Track your development metrics and performance trends
+          </p>
+        </div>
+
+        {/* User Info */}
+        {session && (
+          <div className="mb-6 text-center">
+            <div className="flex items-center justify-center space-x-3">
               <img
                 src={session.user?.image || ''}
                 alt={session.user?.name || ''}
-                className="w-8 h-8 rounded-full"
+                className="w-10 h-10 rounded-full"
               />
-              <span className="text-sm text-gray-700">{session.user?.name}</span>
+              <div>
+                <div className="font-medium text-gray-900">{session.user?.name}</div>
+                <div className="text-sm text-gray-600">@{session.user?.name}</div>
+              </div>
             </div>
-            <button
-              onClick={() => signOut()}
-              className="text-sm text-gray-600 hover:text-gray-900"
-            >
-              Sign out
-            </button>
           </div>
-        </div>
+        )}
 
-        {/* Repository Filter */}
-        {availableRepos.length > 0 && (
+        {/* View Toggle */}
+        <ViewToggle
+          currentView={currentView}
+          onViewChange={setCurrentView}
+        />
+
+        {/* Month Selector for Monthly View */}
+        {currentView === 'monthly' && (
+          <div className="mb-6 text-center">
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              max={new Date().toISOString().slice(0, 7)} // Prevent future months
+            />
+          </div>
+        )}
+
+        {/* Repository Filter for Weekly View */}
+        {currentView === 'weekly' && availableRepos.length > 0 && (
           <RepoFilter
             selectedRepo={selectedRepo}
             onRepoChange={setSelectedRepo}
@@ -198,26 +270,11 @@ export default function Home() {
           />
         )}
 
-        {/* Verdict Banner */}
-        {metrics && metrics.verdict && !loading && (
-          <VerdictBanner
-            verdict={metrics.verdict}
-            trend={trend || undefined}
-          />
-        )}
-
-        {/* Target Progress */}
-        {metrics && metrics.targets && !loading && (
-          <TargetProgress
-            targets={metrics.targets}
-            completionRate={metrics.targets.completionRate}
-            overallStatus={metrics.targets.overallStatus}
-          />
-        )}
-
-        {/* Streak Display */}
-        {metrics && metrics.streak && !loading && (
-          <StreakDisplay streak={metrics.streak} />
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="text-red-800">{error}</div>
+          </div>
         )}
 
         {/* Loading State */}
@@ -227,37 +284,82 @@ export default function Home() {
           </div>
         )}
 
-        {/* Metrics Display */}
-        {metrics && !loading && (
+        {/* Weekly View */}
+        {currentView === 'weekly' && metrics && !loading && (
           <>
-            <MetricSection
-              title="Activity"
-              metrics={[
-                { label: 'Commits', value: metrics.metrics.activity.commits },
-                { label: 'PR Opened', value: metrics.metrics.activity.prOpened },
-                { label: 'PR Merged', value: metrics.metrics.activity.prMerged },
-                { label: 'Features Completed', value: metrics.metrics.activity.featuresCompleted }
-              ]}
-            />
+            {/* Verdict Banner */}
+            {metrics && metrics.verdict && !loading && (
+              <VerdictBanner
+                verdict={metrics.verdict}
+                trend={trend || undefined}
+              />
+            )}
 
-            <MetricSection
-              title="Combat"
-              metrics={[
-                { label: 'Bugs Found', value: metrics.metrics.combat.bugsFound },
-                { label: 'Bugs Fixed', value: metrics.metrics.combat.bugsFixed },
-                { label: 'Open Bugs', value: metrics.metrics.combat.openBugs },
-                { label: 'Bug Fix Ratio', value: metrics.metrics.combat.bugFixRatio.toFixed(2) }
-              ]}
-            />
+            {/* Target Progress */}
+            {metrics && metrics.targets && !loading && (
+              <TargetProgress
+                targets={metrics.targets}
+                completionRate={metrics.targets.completionRate}
+                overallStatus={metrics.targets.overallStatus}
+              />
+            )}
 
-            <MetricSection
-              title="Defense"
-              metrics={[
-                { label: 'Tests Written', value: metrics.metrics.defense.testsWritten },
-                { label: 'CI Runs', value: metrics.metrics.defense.ciRuns }
-              ]}
-            />
+            {/* Streak Display */}
+            {metrics && metrics.streak && !loading && (
+              <StreakDisplay streak={metrics.streak} />
+            )}
+
+            {/* Metrics Display */}
+            {metrics && !loading && (
+              <>
+                <MetricSection
+                  title="Activity"
+                  metrics={[
+                    { label: 'Commits', value: metrics.metrics.activity.commits },
+                    { label: 'PR Opened', value: metrics.metrics.activity.prOpened },
+                    { label: 'PR Merged', value: metrics.metrics.activity.prMerged },
+                    { label: 'Features Completed', value: metrics.metrics.activity.featuresCompleted }
+                  ]}
+                />
+                <MetricSection
+                  title="Combat"
+                  metrics={[
+                    { label: 'Bugs Found', value: metrics.metrics.combat.bugsFound },
+                    { label: 'Bugs Fixed', value: metrics.metrics.combat.bugsFixed },
+                    { label: 'Open Bugs', value: metrics.metrics.combat.openBugs },
+                    { label: 'Bug Fix Ratio', value: metrics.metrics.combat.bugFixRatio.toFixed(2) }
+                  ]}
+                />
+                <MetricSection
+                  title="Defense"
+                  metrics={[
+                    { label: 'Tests Written', value: metrics.metrics.defense.testsWritten },
+                    { label: 'CI Runs', value: metrics.metrics.defense.ciRuns }
+                  ]}
+                />
+              </>
+            )}
           </>
+        )}
+
+        {/* Monthly View */}
+        {currentView === 'monthly' && monthlyData && !loading && (
+          <MonthlyView
+            data={monthlyData}
+            monthYear={selectedMonth}
+          />
+        )}
+
+        {/* Sign Out Button */}
+        {session && (
+          <div className="mt-8 text-center">
+            <button
+              onClick={() => signOut()}
+              className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900"
+            >
+              Sign Out
+            </button>
+          </div>
         )}
       </div>
     </div>
