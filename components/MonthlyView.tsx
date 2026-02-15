@@ -29,7 +29,12 @@ interface MonthlyViewProps {
   monthYear: string
 }
 
+import { calculateComposition } from '@/lib/compositionEngine'
+import { EffortComposition } from '@/components/EffortComposition'
+
 export function MonthlyView({ data, monthYear }: MonthlyViewProps) {
+  const composition = calculateComposition(data.metrics)
+
   const getVerdictColor = (verdict: string) => {
     switch (verdict) {
       case 'STRONG_MONTH':
@@ -82,6 +87,9 @@ export function MonthlyView({ data, monthYear }: MonthlyViewProps) {
           </div>
         </div>
       </div>
+
+      {/* Effort Composition */}
+      <EffortComposition composition={composition} />
 
       {/* Metric Sections */}
       <div className="space-y-8">
