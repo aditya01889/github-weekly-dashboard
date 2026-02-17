@@ -4,6 +4,7 @@ export default async function TestPage() {
   let supabaseStatus = 'Unknown'
   let snapshotsCount = 0
   let error = null
+  let snapshotsData: any[] = []
 
   try {
     if (!supabase) {
@@ -11,16 +12,20 @@ export default async function TestPage() {
     } else {
       supabaseStatus = 'Connected'
       
-      // Test query
+      // Test query to see all snapshots
       const { data, error: queryError } = await supabase
         .from('weekly_snapshots')
-        .select('count')
-        .limit(1)
+        .select('*')
+        .order('week_start', { ascending: true })
       
       if (queryError) {
         error = queryError.message
       } else {
         snapshotsCount = data?.length || 0
+        snapshotsData = data || []
+        if (data && data.length > 0) {
+          console.log('All snapshot dates:', data.map((s: any) => s.week_start))
+        }
       }
     }
   } catch (err) {
@@ -63,15 +68,17 @@ export default async function TestPage() {
           </div>
           
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Test URLs</h2>
-            <div className="space-y-2">
-              <a href="/report/2026-02" className="text-blue-600 hover:underline">
-                /report/2026-02 (dash format)
-              </a>
-              <br />
-              <a href="/report/2026/02" className="text-blue-600 hover:underline">
-                /report/2026/02 (slash format)
-              </a>
+            <h2 className="text-lg font-semibold text-gray-900">Available Snapshot Dates</h2>
+            <div className="text-gray-600">
+              {snapshotsData && snapshotsData.length > 0 ? (
+                <ul className="list-disc list-inside">
+                  {snapshotsData.map((snapshot: any, index: number) => (
+                    <li key={index}>{snapshot.week_start}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No snapshots found</p>
+              )}
             </div>
           </div>
         </div>

@@ -105,6 +105,10 @@ export default async function ReportPage({ params }: ReportPageProps) {
     const monthStart = new Date(yearNum, monthNum - 1, 1) // month is 0-indexed in JS
     const monthEnd = new Date(yearNum, monthNum, 0) // Last day of previous month
 
+    console.log('Querying snapshots for date range:')
+    console.log('Month start:', monthStart.toISOString().split('T')[0])
+    console.log('Month end:', monthEnd.toISOString().split('T')[0])
+
     // Get all weekly snapshots for the month (public view - no user filtering)
     const { data: snapshots, error } = await supabase
       .from('weekly_snapshots')
@@ -112,6 +116,13 @@ export default async function ReportPage({ params }: ReportPageProps) {
       .gte('week_start', monthStart.toISOString().split('T')[0])
       .lte('week_start', monthEnd.toISOString().split('T')[0])
       .order('week_start', { ascending: true })
+
+    console.log('Query result:')
+    console.log('Snapshots found:', snapshots?.length || 0)
+    console.log('Error:', error)
+    if (snapshots && snapshots.length > 0) {
+      console.log('Snapshot dates:', snapshots.map(s => s.week_start))
+    }
 
     if (error) {
       console.error('Database error:', error)
