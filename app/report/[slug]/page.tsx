@@ -38,15 +38,14 @@ interface ReportPageProps {
 export default async function ReportPage({ params }: ReportPageProps) {
   const { slug } = params
   
-  // Debug logging
-  console.log('Report page accessed with slug:', slug)
+  console.log('=== REPORT PAGE START ===')
+  console.log('Slug:', slug)
   
-  // Parse slug to extract year and month (supports both "YYYY-MM" and "YYYY/MM" formats)
+  // Parse slug to extract year and month
   let year: string
   let month: string
   
   if (slug.includes('-')) {
-    // Handle YYYY-MM format
     const parts = slug.split('-')
     if (parts.length !== 2) {
       console.log('Invalid slug format with dash:', slug)
@@ -54,7 +53,6 @@ export default async function ReportPage({ params }: ReportPageProps) {
     }
     [year, month] = parts
   } else if (slug.includes('/')) {
-    // Handle YYYY/MM format
     const parts = slug.split('/')
     if (parts.length !== 2) {
       console.log('Invalid slug format with slash:', slug)
@@ -66,93 +64,64 @@ export default async function ReportPage({ params }: ReportPageProps) {
     notFound()
   }
   
-  console.log('Parsed year:', year, 'month:', month)
+  console.log('Parsed - Year:', year, 'Month:', month)
   
   // Validate year and month format
   if (!/^\d{4}$/.test(year) || !/^\d{2}$/.test(month)) {
+    console.log('Invalid year/month format')
     notFound()
   }
 
-  // Validate month range
   const monthNum = parseInt(month)
   if (monthNum < 1 || monthNum > 12) {
+    console.log('Invalid month range:', monthNum)
     notFound()
   }
 
-  // Validate year range (reasonable bounds)
   const yearNum = parseInt(year)
   if (yearNum < 2020 || yearNum > new Date().getFullYear() + 1) {
+    console.log('Invalid year range:', yearNum)
     notFound()
   }
 
+  // Check Supabase availability
   if (!supabase) {
-    console.log('Supabase client not available')
+    console.log('Supabase not available')
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Report Unavailable</h1>
           <p className="text-gray-600">Database connection not available.</p>
-          <p className="text-sm text-gray-500 mt-2">Check Supabase environment variables.</p>
         </div>
       </div>
     )
   }
 
-  console.log('Supabase client available, querying data...')
+  console.log('Supabase available, proceeding with query')
 
   try {
-    // Parse month to get start and end dates
-    const monthStart = new Date(yearNum, monthNum - 1, 1) // month is 0-indexed in JS
-    const monthEnd = new Date(yearNum, monthNum, 0) // Last day of previous month
+    // Calculate date range
+    const monthStart = new Date(yearNum, monthNum - 1, 1)
+    const monthEnd = new Date(yearNum, monthNum, 0)
+    
+    const startDate = monthStart.toISOString().split('T')[0]
+    const endDate = monthEnd.toISOString().split('T')[0]
+    
+    console.log('Date range:', startDate, 'to', endDate)
 
-    console.log('Querying snapshots for date range:')
-    console.log('Month start:', monthStart.toISOString().split('T')[0])
-    console.log('Month end:', monthEnd.toISOString().split('T')[0])
-    console.log('Month start date object:', monthStart)
-    console.log('Month end date object:', monthEnd)
-
-    // Get all weekly snapshots for month (public view - no user filtering)
-    let { data: snapshots, error } = await supabase
+    // SINGLE EFFICIENT QUERY - Filter by user and date range
+    console.log('Executing single database query...')
+    const { data: snapshots, error } = await supabase
       .from('weekly_snapshots')
       .select('*')
-      .gte('week_start', monthStart.toISOString().split('T')[0])
-      .lte('week_start', monthEnd.toISOString().split('T')[0])
+      .eq('repo_scope', 'all') // Filter by repo_scope instead of user_id (single user app)
+      .gte('week_start', startDate)
+      .lte('week_start', endDate)
       .order('week_start', { ascending: true })
 
-    console.log('Query result:')
-    console.log('Snapshots found:', snapshots?.length || 0)
+    console.log('Query completed')
     console.log('Error:', error)
-    if (snapshots && snapshots.length > 0) {
-      console.log('Snapshot dates:', snapshots.map((s: any) => s.week_start))
-    }
-
-    // If no snapshots found for month, try a broader search to debug
-    if (!snapshots || snapshots.length === 0) {
-      console.log('No snapshots found, trying broader search...')
-      const { data: allSnapshots } = await supabase
-        .from('weekly_snapshots')
-        .select('*')
-        .order('week_start', { ascending: true })
-        .limit(10)
-      
-      console.log('All recent snapshots:')
-      if (allSnapshots) {
-        console.log(allSnapshots.map((s: any) => ({ date: s.week_start, year: s.week_start?.substring(0, 4), month: s.week_start?.substring(5, 7) })))
-        
-        // Check if any snapshot matches the requested month
-        const matchingSnapshot = allSnapshots.find((s: any) => {
-          const snapshotYear = s.week_start?.substring(0, 4)
-          const snapshotMonth = s.week_start?.substring(5, 7)
-          return snapshotYear === year && snapshotMonth === month
-        })
-        
-        if (matchingSnapshot) {
-          console.log('Found matching snapshot:', matchingSnapshot)
-          // Use the matching snapshot for the report
-          snapshots = [matchingSnapshot]
-        }
-      }
-    }
+    console.log('Snapshots found:', snapshots?.length || 0)
 
     if (error) {
       console.error('Database error:', error)
@@ -166,18 +135,22 @@ export default async function ReportPage({ params }: ReportPageProps) {
       )
     }
 
+    // Return immediately if no data
     if (!snapshots || snapshots.length === 0) {
+      console.log('No data found, returning No Data page')
       return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-gray-900 mb-4">No Data Available</h1>
-            <p className="text-gray-600">No data available for this month.</p>
+            <p className="text-gray-600">No data available for {year}-{month}.</p>
           </div>
         </div>
       )
     }
 
-    // Aggregate metrics across all weeks (reuse logic from monthly view)
+    console.log('Processing', snapshots.length, 'snapshots')
+
+    // Aggregate metrics (simple loop, no recursion)
     const aggregatedMetrics = {
       activity: {
         commits: 0,
@@ -199,49 +172,40 @@ export default async function ReportPage({ params }: ReportPageProps) {
 
     let latestOpenBugs = 0
 
-    // Sum up all weekly metrics
     for (const snapshot of snapshots) {
       const metrics = snapshot.metrics
       
-      // Activity metrics (sum)
       aggregatedMetrics.activity.commits += metrics.activity.commits
       aggregatedMetrics.activity.prOpened += metrics.activity.prOpened
       aggregatedMetrics.activity.prMerged += metrics.activity.prMerged
       aggregatedMetrics.activity.featuresCompleted += metrics.activity.featuresCompleted
       
-      // Combat metrics (sum)
       aggregatedMetrics.combat.bugsFound += metrics.combat.bugsFound
       aggregatedMetrics.combat.bugsFixed += metrics.combat.bugsFixed
       
-      // Defense metrics (sum)
       aggregatedMetrics.defense.testsWritten += metrics.defense.testsWritten
       aggregatedMetrics.defense.ciRuns += metrics.defense.ciRuns
       
-      // Track latest open bugs from the most recent week
       latestOpenBugs = metrics.combat.openBugs
     }
 
-    // Set open bugs from latest week
     aggregatedMetrics.combat.openBugs = latestOpenBugs
 
-    // Recalculate bug fix ratio safely
+    // Calculate bug fix ratio
     if (aggregatedMetrics.combat.bugsFound > 0) {
-      aggregatedMetrics.combat.bugFixRatio = 
-        aggregatedMetrics.combat.bugsFixed / aggregatedMetrics.combat.bugsFound
+      aggregatedMetrics.combat.bugFixRatio = aggregatedMetrics.combat.bugsFixed / aggregatedMetrics.combat.bugsFound
     } else if (aggregatedMetrics.combat.bugsFixed > 0) {
-      aggregatedMetrics.combat.bugFixRatio = 1 // All bugs fixed, none found
+      aggregatedMetrics.combat.bugFixRatio = 1
     } else {
-      aggregatedMetrics.combat.bugFixRatio = 0 // No bugs found or fixed
+      aggregatedMetrics.combat.bugFixRatio = 0
     }
 
-    // Count qualified weeks
+    // Calculate qualified weeks and verdict
     const qualifiedWeeks = snapshots.filter(snapshot => snapshot.qualified).length
     const totalWeeks = snapshots.length
-
-    // Calculate monthly verdict
-    let monthlyVerdict: string
     const qualifiedRatio = qualifiedWeeks / totalWeeks
     
+    let monthlyVerdict: string
     if (qualifiedRatio >= 1) {
       monthlyVerdict = 'STRONG_MONTH'
     } else if (qualifiedRatio >= 0.75) {
@@ -252,7 +216,7 @@ export default async function ReportPage({ params }: ReportPageProps) {
       monthlyVerdict = 'CHAOTIC_MONTH'
     }
 
-    // Calculate end-of-month streak (consecutive qualified weeks ending month)
+    // Calculate end-of-month streak
     let endOfMonthStreak = 0
     for (let i = snapshots.length - 1; i >= 0; i--) {
       if (snapshots[i].qualified) {
@@ -271,6 +235,9 @@ export default async function ReportPage({ params }: ReportPageProps) {
 
     const composition = calculateComposition(aggregatedMetrics)
 
+    console.log('=== REPORT PAGE SUCCESS ===')
+    console.log('Returning report with', qualifiedWeeks, 'qualified weeks')
+
     return (
       <div className="min-h-screen bg-gray-50">
         <MonthlyReportView 
@@ -283,7 +250,7 @@ export default async function ReportPage({ params }: ReportPageProps) {
       </div>
     )
   } catch (error) {
-    console.error('Error generating report:', error)
+    console.error('=== REPORT PAGE ERROR ===', error)
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
