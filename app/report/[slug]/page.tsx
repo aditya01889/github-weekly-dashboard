@@ -108,9 +108,11 @@ export default async function ReportPage({ params }: ReportPageProps) {
     console.log('Querying snapshots for date range:')
     console.log('Month start:', monthStart.toISOString().split('T')[0])
     console.log('Month end:', monthEnd.toISOString().split('T')[0])
+    console.log('Month start date object:', monthStart)
+    console.log('Month end date object:', monthEnd)
 
-    // Get all weekly snapshots for the month (public view - no user filtering)
-    const { data: snapshots, error } = await supabase
+    // Get all weekly snapshots for month (public view - no user filtering)
+    let { data: snapshots, error } = await supabase
       .from('weekly_snapshots')
       .select('*')
       .gte('week_start', monthStart.toISOString().split('T')[0])
@@ -121,7 +123,35 @@ export default async function ReportPage({ params }: ReportPageProps) {
     console.log('Snapshots found:', snapshots?.length || 0)
     console.log('Error:', error)
     if (snapshots && snapshots.length > 0) {
-      console.log('Snapshot dates:', snapshots.map(s => s.week_start))
+      console.log('Snapshot dates:', snapshots.map((s: any) => s.week_start))
+    }
+
+    // If no snapshots found for month, try a broader search to debug
+    if (!snapshots || snapshots.length === 0) {
+      console.log('No snapshots found, trying broader search...')
+      const { data: allSnapshots } = await supabase
+        .from('weekly_snapshots')
+        .select('*')
+        .order('week_start', { ascending: true })
+        .limit(10)
+      
+      console.log('All recent snapshots:')
+      if (allSnapshots) {
+        console.log(allSnapshots.map((s: any) => ({ date: s.week_start, year: s.week_start?.substring(0, 4), month: s.week_start?.substring(5, 7) })))
+        
+        // Check if any snapshot matches the requested month
+        const matchingSnapshot = allSnapshots.find((s: any) => {
+          const snapshotYear = s.week_start?.substring(0, 4)
+          const snapshotMonth = s.week_start?.substring(5, 7)
+          return snapshotYear === year && snapshotMonth === month
+        })
+        
+        if (matchingSnapshot) {
+          console.log('Found matching snapshot:', matchingSnapshot)
+          // Use the matching snapshot for the report
+          snapshots = [matchingSnapshot]
+        }
+      }
     }
 
     if (error) {
