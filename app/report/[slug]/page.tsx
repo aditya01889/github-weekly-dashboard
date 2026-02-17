@@ -38,6 +38,9 @@ interface ReportPageProps {
 export default async function ReportPage({ params }: ReportPageProps) {
   const { slug } = params
   
+  // Debug logging
+  console.log('Report page accessed with slug:', slug)
+  
   // Parse slug to extract year and month (supports both "YYYY-MM" and "YYYY/MM" formats)
   let year: string
   let month: string
@@ -46,6 +49,7 @@ export default async function ReportPage({ params }: ReportPageProps) {
     // Handle YYYY-MM format
     const parts = slug.split('-')
     if (parts.length !== 2) {
+      console.log('Invalid slug format with dash:', slug)
       notFound()
     }
     [year, month] = parts
@@ -53,12 +57,16 @@ export default async function ReportPage({ params }: ReportPageProps) {
     // Handle YYYY/MM format
     const parts = slug.split('/')
     if (parts.length !== 2) {
+      console.log('Invalid slug format with slash:', slug)
       notFound()
     }
     [year, month] = parts
   } else {
+    console.log('Unsupported slug format:', slug)
     notFound()
   }
+  
+  console.log('Parsed year:', year, 'month:', month)
   
   // Validate year and month format
   if (!/^\d{4}$/.test(year) || !/^\d{2}$/.test(month)) {
@@ -78,15 +86,19 @@ export default async function ReportPage({ params }: ReportPageProps) {
   }
 
   if (!supabase) {
+    console.log('Supabase client not available')
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Report Unavailable</h1>
           <p className="text-gray-600">Database connection not available.</p>
+          <p className="text-sm text-gray-500 mt-2">Check Supabase environment variables.</p>
         </div>
       </div>
     )
   }
+
+  console.log('Supabase client available, querying data...')
 
   try {
     // Parse month to get start and end dates
